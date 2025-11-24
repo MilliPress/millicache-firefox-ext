@@ -13,6 +13,23 @@
     "48": "icon48.png",
     "128": "icon128.png"
   },
+  "theme_icons": [
+    {
+      "light": "icon16-dark.png",
+      "dark": "icon16.png",
+      "size": 16
+    },
+    {
+      "light": "icon48-dark.png",
+      "dark": "icon48.png",
+      "size": 48
+    },
+    {
+      "light": "icon128-dark.png",
+      "dark": "icon128.png",
+      "size": 128
+    }
+  ],
   "browser_specific_settings": {
     "gecko": {
       "id": "millicache@headers.dev",
