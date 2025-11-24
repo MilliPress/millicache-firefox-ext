@@ -62,7 +62,7 @@ document.addEventListener("DOMContentLoaded", () => {
       switch (name) {
         case "key": key = value; break;
         case "time": time = value; break;
-        case "flags": flags = value.split(" "); break;
+        case "flags": flags = value.split(" ").filter(f => !f.startsWith("url:")); break;
         case "gzip": gzip = value === "true" ? "✔ Enabled" : "✖ Disabled"; break;
         case "reason": reason = value; break;
         case "expires": expires = value; break;
