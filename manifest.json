@@ -1,0 +1,22 @@
+{
+  "manifest_version": 2,
+  "name": "MilliCache",
+  "version": "1.0.5",
+  "description": "Inspect MilliCache headers in DevTools.",
+  "devtools_page": "devtools.html",
+  "permissions": [
+    "devtools",
+    "<all_urls>"
+  ],
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "applications": {
+    "gecko": {
+      "id": "millicache@headers.dev",
+      "strict_min_version": "96.0"
+    }
+  }
+}
