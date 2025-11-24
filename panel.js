@@ -119,7 +119,9 @@ document.addEventListener("DOMContentLoaded", () => {
         ? '<span style="color:green">●</span>'
         : status.toLowerCase() === "miss"
           ? '<span style="color:red">●</span>'
-          : '<span style="color:gray">●</span>';
+          : status.toLowerCase() === "stale"
+            ? '<span style="color:orange">●</span>'
+            : '<span style="color:gray">●</span>';
       badge.innerHTML = colorDot + " " + status.toUpperCase();
 
       valueCell.appendChild(badge);
@@ -180,7 +182,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const statusVal = statusHeader?.value?.toLowerCase() || '';
     const mime = request.response?.content?.mimeType || '';
-    if (!(["hit", "miss"].includes(statusVal) || (statusVal === "bypass" && mime.includes("text/html")))) {
+    if (!(["hit", "miss", "stale"].includes(statusVal) || (statusVal === "bypass" && mime.includes("text/html")))) {
 
       return;
     }
