@@ -53,6 +53,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let key = "";
     let time = "";
     let gzip = "";
+    let reason = "";
     let expires = "";
 
     milliHeaders.forEach(h => {
@@ -63,6 +64,7 @@ document.addEventListener("DOMContentLoaded", () => {
         case "time": time = value; break;
         case "flags": flags = value.split(" "); break;
         case "gzip": gzip = value === "true" ? "✔ Enabled" : "✖ Disabled"; break;
+        case "reason": reason = value; break;
         case "expires": expires = value; break;
       }
     });
@@ -130,6 +132,7 @@ document.addEventListener("DOMContentLoaded", () => {
       tbody.appendChild(row);
     }
 
+    if (reason) addTableRow(tbody, "💬 Reason", reason);
     if (expires) addTableRow(tbody, "⏳ Expires", expires);
 
     // Add table body to table
