@@ -104,7 +104,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const next = newStatus.toLowerCase();
     if (prev === "miss" && next === "hit") return "cached";
     if (prev === "hit" && next === "stale") return "expired";
-    if (prev === "hit" && next === "miss") return "invalidated";
+    if (prev === "hit" && next === "miss") return "cleared";
     if (prev === "stale" && next === "hit") return "regenerated";
     if (prev === "miss" && next === "stale") return "stale";
     return null;
