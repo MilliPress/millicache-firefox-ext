@@ -116,6 +116,19 @@ body {
   color: var(--error-color);
 }
 
+/* Transition badge - shows status change like "cached", "expired" (inline after status) */
+.status-transition-badge {
+  margin-left: 0.75rem;
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+  background-color: var(--primary-light);
+  color: var(--primary-dark);
+  font-weight: 500;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
 .entry-card code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   background: var(--gray-100);
@@ -279,6 +292,11 @@ body {
   }
 
   .pill {
+    background-color: var(--primary-dark);
+    color: var(--gray-100);
+  }
+
+  .status-transition-badge {
     background-color: var(--primary-dark);
     color: var(--gray-100);
   }

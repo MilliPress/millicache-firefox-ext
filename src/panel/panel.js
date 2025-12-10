@@ -11,6 +11,16 @@ document.addEventListener("DOMContentLoaded", () => {
   let debugNoticeDismissed = false;
   let hasShownDebugNotice = false;
 
+  // Retention settings
+  const ENTRY_LIFETIME_MS = 60000; // 60 seconds
+  const MIN_ENTRIES_KEPT = 5;
+
+  // Track last navigated URL for reload vs navigate detection
+  let lastNavigatedUrl = null;
+
+  // Track last status per URL for transition badges
+  const urlStatusCache = new Map(); // url -> last status
+
   // Track MISS TTFB for comparison with HITs
   const missTtfbCache = new Map(); // key: cacheKey, value: { ttfb, url, timestamp }
 
@@ -50,14 +60,18 @@ document.addEventListener("DOMContentLoaded", () => {
     debugNotice.style.display = "none";
   }
 
-  browser.devtools.network.onNavigated.addListener(() => {
+  browser.devtools.network.onNavigated.addListener((url) => {
     // Reset state on navigation to new page
     hasShownDebugNotice = false;
     hasSeenMilliCacheOnSite = false;
-    insertReloadSeparator();
+
+    // Determine if reload or navigation
+    const isReload = (url === lastNavigatedUrl);
+    insertNavigationSeparator(isReload);
+    lastNavigatedUrl = url;
   });
 
-  function insertReloadSeparator() {
+  function insertNavigationSeparator(isReload) {
     if (lastSeparator) lastSeparator.remove();
     const wrapper = document.createElement("div");
     wrapper.className = "separator";
@@ -66,7 +80,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const hr = document.createElement("hr");
     const label = document.createElement("div");
     label.className = "separator-label";
-    label.textContent = `↺ Reloaded at ${new Date().toLocaleTimeString()}`;
+
+    const icon = isReload ? "↺" : "→";
+    const action = isReload ? "Reloaded" : "Navigated";
+    label.textContent = `${icon} ${action} at ${new Date().toLocaleTimeString()}`;
+
     wrapper.appendChild(hr);
     wrapper.appendChild(label);
     log.prepend(wrapper);
@@ -78,6 +96,18 @@ document.addEventListener("DOMContentLoaded", () => {
       lastSeparator.remove();
       lastSeparator = null;
     }
+  }
+
+  // Get transition label for status changes
+  function getTransitionLabel(prevStatus, newStatus) {
+    const prev = prevStatus.toLowerCase();
+    const next = newStatus.toLowerCase();
+    if (prev === "miss" && next === "hit") return "cached";
+    if (prev === "hit" && next === "stale") return "expired";
+    if (prev === "hit" && next === "miss") return "invalidated";
+    if (prev === "stale" && next === "hit") return "regenerated";
+    if (prev === "miss" && next === "stale") return "stale";
+    return null;
   }
 
   // Format time as milliseconds or seconds
@@ -94,10 +124,20 @@ document.addEventListener("DOMContentLoaded", () => {
     card.className = "entry-card highlight";
     card.setAttribute('data-status', status.toLowerCase());
 
+    const requestUrl = request.request.url;
+
+    // Check for transition from previous status
+    const prevStatus = urlStatusCache.get(requestUrl);
+    let transitionLabel = null;
+    if (prevStatus) {
+      transitionLabel = getTransitionLabel(prevStatus, status);
+    }
+    urlStatusCache.set(requestUrl, status.toLowerCase());
+
     // Create the header with URL
     const url = document.createElement("h3");
     url.className = "url";
-    url.textContent = "🔗 " + request.request.url;
+    url.textContent = "🔗 " + requestUrl;
     card.appendChild(url);
 
     // Add HTTP status code
@@ -136,36 +176,10 @@ document.addEventListener("DOMContentLoaded", () => {
     // Table body
     const tbody = document.createElement("tbody");
 
-    // Add rows for each piece of information
-    if (key) addTableRow(tbody, "🧠 Key", key);
-    if (time) addTableRow(tbody, "🕑 Time", time);
+    // 1. TTFB (first - most immediate performance indicator)
     if (ttfb !== null && ttfb !== undefined) addTableRow(tbody, "⚡ TTFB", formatTime(ttfb));
 
-    // Special handling for flags
-    if (flags.length) {
-      const row = document.createElement("tr");
-      const labelCell = document.createElement("td");
-      labelCell.className = "label";
-      labelCell.textContent = "🏷 Flags";
-
-      const valueCell = document.createElement("td");
-      valueCell.className = "value";
-
-      flags.forEach(f => {
-        const pill = document.createElement("span");
-        pill.className = "pill";
-        pill.textContent = f;
-        valueCell.appendChild(pill);
-      });
-
-      row.appendChild(labelCell);
-      row.appendChild(valueCell);
-      tbody.appendChild(row);
-    }
-
-    if (gzip) addTableRow(tbody, "🗜️ Gzip", gzip);
-
-    // Special handling for status
+    // 2. Status
     if (status) {
       const row = document.createElement("tr");
       const labelCell = document.createElement("td");
@@ -196,15 +210,54 @@ document.addEventListener("DOMContentLoaded", () => {
       badge.appendChild(document.createTextNode(status.toUpperCase()));
 
       valueCell.appendChild(badge);
+
+      // Add transition badge after status if there was a change
+      if (transitionLabel) {
+        const transitionBadge = document.createElement("span");
+        transitionBadge.className = "status-transition-badge";
+        transitionBadge.textContent = transitionLabel;
+        valueCell.appendChild(transitionBadge);
+      }
+
       row.appendChild(labelCell);
       row.appendChild(valueCell);
       tbody.appendChild(row);
     }
 
+    // 2. Reason
     if (reason) addTableRow(tbody, "💬 Reason", reason);
+
+    // 3. Expires
     if (expires) addTableRow(tbody, "⏳ Expires", expires);
 
-    // Add TTFB savings row if available
+    // 4. Flags
+    if (flags.length) {
+      const row = document.createElement("tr");
+      const labelCell = document.createElement("td");
+      labelCell.className = "label";
+      labelCell.textContent = "🏷 Flags";
+
+      const valueCell = document.createElement("td");
+      valueCell.className = "value";
+
+      flags.forEach(f => {
+        const pill = document.createElement("span");
+        pill.className = "pill";
+        pill.textContent = f;
+        valueCell.appendChild(pill);
+      });
+
+      row.appendChild(labelCell);
+      row.appendChild(valueCell);
+      tbody.appendChild(row);
+    }
+
+    // Additional info (less important)
+    if (key) addTableRow(tbody, "🧠 Key", key);
+    if (time) addTableRow(tbody, "🕑 Time", time);
+    if (gzip) addTableRow(tbody, "🗜️ Gzip", gzip);
+
+    // Savings (last)
     if (ttfbSavings) {
       addTtfbSavingsRow(tbody, ttfbSavings);
     }
@@ -215,7 +268,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Add table to card
     card.appendChild(table);
 
-    // Add card to log
+    // Add card to log (newest at top - prepend puts it above everything including separator)
     log.prepend(card);
 
     // Highlight effect
@@ -223,11 +276,14 @@ document.addEventListener("DOMContentLoaded", () => {
       card.classList.remove("highlight");
     }, 10000);
 
-    // Auto-remove after 20 seconds
+    // Auto-remove after 60 seconds (but keep minimum entries)
     setTimeout(() => {
-      card.remove();
-      checkRemoveSeparator();
-    }, 20000);
+      const entries = log.querySelectorAll(".entry-card");
+      if (entries.length > MIN_ENTRIES_KEPT) {
+        card.remove();
+        checkRemoveSeparator();
+      }
+    }, ENTRY_LIFETIME_MS);
   }
 
 // Helper function to add a row to the table
