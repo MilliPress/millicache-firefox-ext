@@ -3,15 +3,15 @@
   "name": "MilliCache",
   "version": "1.0.13",
   "description": "Inspect MilliCache headers in DevTools.",
-  "devtools_page": "devtools.html",
+  "devtools_page": "devtools/devtools.html",
   "permissions": [
     "devtools",
     "<all_urls>"
   ],
   "icons": {
-    "16": "icon16.png",
-    "48": "icon48.png",
-    "128": "icon128.png"
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
   },
   "browser_specific_settings": {
     "gecko": {
