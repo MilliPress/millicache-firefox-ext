@@ -28,6 +28,40 @@ document.addEventListener("DOMContentLoaded", () => {
   // Track cards by URL for reuse
   const cardsByUrl = new Map();
 
+  // Navigation state - prevent rapid clicks
+  let isNavigating = false;
+
+  function navigateToUrl(url) {
+    if (isNavigating) return;
+    isNavigating = true;
+
+    browser.devtools.inspectedWindow.eval(`window.location.href = ${JSON.stringify(url)}`)
+      .catch(() => {
+        // On error, force reload
+        browser.devtools.inspectedWindow.reload();
+      })
+      .finally(() => {
+        // Reset after a delay to allow navigation to complete
+        setTimeout(() => {
+          isNavigating = false;
+        }, 500);
+      });
+  }
+
+  // Global countdown timer - all countdowns update together
+  const countdownElements = new Set();
+  setInterval(() => {
+    countdownElements.forEach(item => {
+      if (!item.element.isConnected) {
+        countdownElements.delete(item);
+        return;
+      }
+      const remaining = item.targetTime - Date.now();
+      item.element.textContent = formatCountdown(remaining);
+      item.badge.style.display = remaining <= 0 ? "inline" : "none";
+    });
+  }, 1000);
+
   // Activate button click handler
   activateBtn.addEventListener("click", () => {
     isDeactivated = false;
@@ -67,6 +101,7 @@ document.addEventListener("DOMContentLoaded", () => {
   browser.devtools.network.onNavigated.addListener((url) => {
     hasShownDebugNotice = false;
     hasSeenMilliCacheOnSite = false;
+    isNavigating = false; // Reset navigation lock
 
     const isReload = (url === lastNavigatedUrl);
     insertNavigationSeparator(isReload);
@@ -279,28 +314,17 @@ document.addEventListener("DOMContentLoaded", () => {
       return row;
     }
 
-    const updateCountdown = () => {
-      const remaining = targetTime - Date.now();
-      countdownSpan.textContent = formatCountdown(remaining);
+    // Initial display
+    const remaining = targetTime - Date.now();
+    countdownSpan.textContent = formatCountdown(remaining);
+    expiredBadge.style.display = remaining <= 0 ? "inline" : "none";
 
-      if (remaining <= 0) {
-        expiredBadge.style.display = "inline";
-      } else {
-        expiredBadge.style.display = "none";
-      }
-    };
-
-    updateCountdown();
-
-    const scheduleNext = () => {
-      setTimeout(() => {
-        if (!countdownSpan.isConnected) return;
-        updateCountdown();
-        scheduleNext();
-      }, 1000);
-    };
-
-    scheduleNext();
+    // Register with global countdown timer
+    countdownElements.add({
+      element: countdownSpan,
+      badge: expiredBadge,
+      targetTime: targetTime
+    });
 
     return row;
   }
@@ -575,13 +599,9 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     card.appendChild(content);
 
-    // Click handler with error recovery
+    // Click handler
     card.addEventListener("click", () => {
-      browser.devtools.inspectedWindow.eval(`window.location.href = ${JSON.stringify(requestUrl)}`)
-        .catch(() => {
-          // On error, force reload the page to reset state
-          browser.devtools.inspectedWindow.reload();
-        });
+      navigateToUrl(requestUrl);
     });
 
     // Track card
