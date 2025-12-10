@@ -71,8 +71,12 @@ jobs:
             exit 1
           fi
           XPI_NAME="millicache-${{ steps.version.outputs.version }}.xpi"
-          mv "$XPI_PATH" "web-ext-artifacts/$XPI_NAME"
-          echo "path=web-ext-artifacts/$XPI_NAME" >> $GITHUB_OUTPUT
+          XPI_FINAL="web-ext-artifacts/$XPI_NAME"
+          # Only rename if not already the target name
+          if [ "$XPI_PATH" != "$XPI_FINAL" ]; then
+            mv "$XPI_PATH" "$XPI_FINAL"
+          fi
+          echo "path=$XPI_FINAL" >> $GITHUB_OUTPUT
           echo "name=$XPI_NAME" >> $GITHUB_OUTPUT
           echo "url=https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/$XPI_NAME" >> $GITHUB_OUTPUT
 
