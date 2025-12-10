@@ -3,6 +3,12 @@ name: Build, Sign & Publish Firefox Add-on
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build (e.g., v1.0.10)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -32,15 +38,25 @@ jobs:
       - name: Extract Version
         id: version
         run: |
-          VERSION=$(echo "${{ github.event.release.tag_name }}" | sed 's/^v//')
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          VERSION=$(echo "$TAG" | sed 's/^v//')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
 
-      - name: Build & Sign Extension (Unlisted)
+      - name: Build Extension
+        id: build
+        uses: kewisch/action-web-ext@v1
+        with:
+          cmd: build
+          source: .
+          ignoreFiles: '["*.md",".DS_Store",".idea/**","*.zip","package.json","package-lock.json","node_modules/**",".env",".env.example",".git/**",".gitignore","docs/**","release-please-config.json",".release-please-manifest.json",".github/**"]'
+
+      - name: Sign Extension (Unlisted)
         id: sign
         uses: kewisch/action-web-ext@v1
         with:
           cmd: sign
-          source: .
+          source: ${{ steps.build.outputs.target }}
           channel: unlisted
           apiKey: ${{ secrets.AMO_JWT_ISSUER }}
           apiSecret: ${{ secrets.AMO_JWT_SECRET }}
@@ -58,12 +74,12 @@ jobs:
           mv "$XPI_PATH" "web-ext-artifacts/$XPI_NAME"
           echo "path=web-ext-artifacts/$XPI_NAME" >> $GITHUB_OUTPUT
           echo "name=$XPI_NAME" >> $GITHUB_OUTPUT
-          echo "url=https://github.com/${{ github.repository }}/releases/download/${{ github.event.release.tag_name }}/$XPI_NAME" >> $GITHUB_OUTPUT
+          echo "url=https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/$XPI_NAME" >> $GITHUB_OUTPUT
 
       - name: Upload XPI to Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.release.tag_name }}
+          tag_name: ${{ steps.version.outputs.tag }}
           files: ${{ steps.xpi.outputs.path }}
           fail_on_unmatched_files: true
 
