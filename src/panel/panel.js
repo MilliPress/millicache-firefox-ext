@@ -139,7 +139,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     wrapper.appendChild(hr);
     wrapper.appendChild(label);
-    card.after(wrapper);
+
+    // Insert after card using nextSibling to ensure correct placement
+    const nextSibling = card.nextSibling;
+    if (nextSibling) {
+      log.insertBefore(wrapper, nextSibling);
+    } else {
+      log.appendChild(wrapper);
+    }
 
     pendingSeparator = null;
   }
