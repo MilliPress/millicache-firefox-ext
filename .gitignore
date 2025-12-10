@@ -2,6 +2,7 @@
 web-ext-artifacts/
 *.zip
 *.xpi
+.amo-upload-uuid
 
 # Dependencies
 node_modules/
