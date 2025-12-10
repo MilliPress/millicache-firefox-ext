@@ -253,8 +253,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Additional info (less important)
-    if (key) addTableRow(tbody, "🧠 Key", key);
     if (time) addTableRow(tbody, "🕑 Time", time);
+    if (key) addTableRow(tbody, "🧠 Key", key);
     if (gzip) addTableRow(tbody, "🗜️ Gzip", gzip);
 
     // Savings (last)
