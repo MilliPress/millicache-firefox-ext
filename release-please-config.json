@@ -3,7 +3,6 @@
   "release-type": "node",
   "packages": {
     ".": {
-      "package-name": "millicache-headers-inspector",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
