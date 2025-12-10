@@ -541,22 +541,25 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
-    // Move to top with slide-up animation
+    // Move to top (disable default slide-in, use flash instead)
+    card.style.animation = "none";
     log.prepend(card);
     insertPendingSeparatorAfter(card);
 
-    // Apply move-up and flash animations
-    card.classList.add("moving-up", "flash");
+    // Force reflow then apply flash animation
+    card.offsetHeight;
+    card.classList.add("flash");
 
-    // Then expand the card (grows into view)
+    // Then expand the card
     requestAnimationFrame(() => {
       card.classList.remove("compact");
       card.classList.add("highlight");
     });
 
-    // Clean up animation classes after they complete
+    // Clean up flash class after animation completes
     card.addEventListener("animationend", () => {
-      card.classList.remove("moving-up", "flash");
+      card.classList.remove("flash");
+      card.style.animation = "";
     }, { once: true });
   }
 

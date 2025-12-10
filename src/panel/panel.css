@@ -90,27 +90,7 @@ body {
   to { opacity: 0; }
 }
 
-/* Animation for card moving to top */
-.entry-card.moving-up {
-  animation: cardMoveUp 0.4s ease-out;
-}
-
-@keyframes cardMoveUp {
-  0% {
-    opacity: 0.7;
-    transform: translateY(30px);
-  }
-  60% {
-    opacity: 1;
-    transform: translateY(-3px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Highlight flash when card reaches top */
+/* Highlight flash when existing card moves to top */
 .entry-card.flash {
   animation: highlightFlash 0.6s ease-out;
 }
