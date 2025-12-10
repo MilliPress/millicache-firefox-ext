@@ -40,113 +40,387 @@ body {
   padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   max-width: 1000px;
   margin: 0 auto;
 }
+
+/* ==========================================================================
+   Entry Card
+   ========================================================================== */
 
 .entry-card {
   position: relative;
   background: white;
   border: 1px solid var(--gray-200);
-  border-left: 5px solid var(--gray-400); /* Default gray border */
-  padding: 1rem;
+  border-left: 4px solid var(--gray-400);
+  padding: 0.75rem 1rem;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-  transition: all 0.2s ease;
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-left-color 0.3s ease,
+    padding 0.25s ease,
+    background 0.3s ease;
+  animation: cardSlideIn 0.3s ease-out;
 }
 
-/* Status-based border colors */
-.entry-card.highlight[data-status="hit"] {
+@keyframes cardSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.entry-card:hover {
+  box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.1);
+}
+
+.entry-card.removing {
+  animation: cardSlideOut 0.3s ease-in forwards;
+}
+
+@keyframes cardSlideOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* Highlight state (newest card) */
+.entry-card.highlight {
+  background: rgba(56, 88, 233, 0.05);
+  padding: 1rem;
+}
+
+/* Status-based border colors - when highlighted or hovered */
+.entry-card[data-status="hit"].highlight,
+.entry-card[data-status="hit"]:hover {
   border-left-color: var(--success-color);
 }
-
-.entry-card.highlight[data-status="miss"] {
+.entry-card[data-status="miss"].highlight,
+.entry-card[data-status="miss"]:hover {
   border-left-color: var(--error-color);
 }
-
-.entry-card.highlight[data-status="bypass"] {
+.entry-card[data-status="bypass"].highlight,
+.entry-card[data-status="bypass"]:hover {
+  border-left-color: var(--info-color);
+}
+.entry-card[data-status="stale"].highlight,
+.entry-card[data-status="stale"]:hover {
   border-left-color: var(--warning-color);
 }
 
-.entry-card.highlight[data-status="stale"] {
-  border-left-color: var(--info-color);
+/* ==========================================================================
+   Card Header
+   ========================================================================== */
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  transition: margin 0.25s ease;
 }
 
-.entry-card.highlight {
-  background: rgba(56, 88, 233, 0.08);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+.entry-card.compact .card-header {
+  margin-bottom: 0.25rem;
 }
 
-.entry-card h3 {
-  margin-top: 0;
-  margin-bottom: 0.75rem;
-  font-size: 1rem;
+.entry-card.compact:hover .card-header {
+  margin-bottom: 0.5rem;
+}
+
+.card-url {
+  flex: 1;
+  font-size: 0.9rem;
   font-weight: 600;
   color: var(--gray-800);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  margin: 0;
+  transition: font-size 0.25s ease;
 }
 
-.http-status-code {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  font-size: 0.75rem;
-  padding: 0.25rem 0.5rem;
+
+.http-status {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.4rem;
   background-color: var(--gray-100);
   color: var(--gray-600);
   font-weight: 500;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  border-radius: 2px;
 }
 
-/* HTTP status code colors */
-.http-status-code[data-code^="2"] {
+.http-status[data-code^="2"] {
   background-color: var(--success-light);
   color: var(--success-color);
 }
-
-.http-status-code[data-code^="3"] {
+.http-status[data-code^="3"] {
   background-color: var(--warning-light);
   color: var(--warning-color);
 }
-
-.http-status-code[data-code^="4"], .http-status-code[data-code^="5"] {
+.http-status[data-code^="4"],
+.http-status[data-code^="5"] {
   background-color: var(--error-light);
   color: var(--error-color);
 }
 
-/* Transition badge - shows status change like "cached", "expired" (inline after status) */
-.status-transition-badge {
-  margin-left: 0.75rem;
-  font-size: 0.7rem;
-  padding: 0.2rem 0.5rem;
+/* ==========================================================================
+   Card Content (Info Rows)
+   ========================================================================== */
+
+.card-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.info-row {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.5rem 0.25rem;
+  border-bottom: 1px solid var(--gray-300);
+  overflow: hidden;
+  transition:
+    max-height 0.25s ease,
+    opacity 0.25s ease,
+    padding 0.25s ease,
+    border-color 0.25s ease;
+}
+
+.info-row:last-child {
+  border-bottom: none;
+}
+
+.info-label {
+  flex-shrink: 0;
+  width: 100px;
+  color: var(--gray-500);
+}
+
+.info-value {
+  flex: 1;
+  color: var(--gray-800);
+  font-weight: 500;
+}
+
+/* Compact mode */
+
+
+.entry-card.compact .info-row:not(.essential) {
+  max-height: 0;
+  opacity: 0;
+  padding: 0;
+  border-bottom: none;
+  pointer-events: none;
+}
+
+.entry-card.compact:hover .info-row:not(.essential) {
+  max-height: 50px;
+  opacity: 1;
+  padding: 0.5rem 0.25rem;
+  pointer-events: auto;
+}
+
+.entry-card.compact:hover .info-row:not(:last-child) {
+  border-bottom: 1px solid var(--gray-300);
+}
+
+/* ==========================================================================
+   Status Badge
+   ========================================================================== */
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.status-dot {
+  font-size: 0.6rem;
+}
+
+.status-badge.hit { color: var(--success-color); }
+.status-badge.hit .status-dot { color: var(--success-color); }
+
+.status-badge.miss { color: var(--error-color); }
+.status-badge.miss .status-dot { color: var(--error-color); }
+
+.status-badge.stale { color: var(--warning-color); }
+.status-badge.stale .status-dot { color: var(--warning-color); }
+
+.status-badge.bypass { color: var(--info-color); }
+.status-badge.bypass .status-dot { color: var(--info-color); }
+
+/* Transition badge */
+.transition-badge {
+  margin-left: 0.5rem;
+  font-size: 0.65rem;
+  padding: 0.15rem 0.4rem;
   background-color: var(--primary-light);
   color: var(--primary-dark);
   font-weight: 500;
   border-radius: 3px;
   text-transform: uppercase;
-  letter-spacing: 0.025em;
+  letter-spacing: 0.02em;
 }
 
-.entry-card code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  background: var(--gray-100);
-  padding: 0.2rem 0.4rem;
-  margin: 0;
+/* Expired badge */
+.expired-badge {
+  margin-left: 0.5rem;
+  font-size: 0.65rem;
+  padding: 0.15rem 0.4rem;
+  background-color: var(--error-light);
+  color: var(--error-color);
+  font-weight: 500;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+
+/* ==========================================================================
+   Pills (Flags)
+   ========================================================================== */
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.pill {
   display: inline-block;
-  font-size: 0.875rem;
+  background-color: var(--primary-light);
   color: var(--primary-dark);
+  font-weight: 500;
+  border-radius: 9999px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: background-color 0.15s, transform 0.1s;
+  user-select: none;
 }
 
-.badge {
-  float: right;
-  font-weight: 600;
-  font-size: 0.75rem;
-  background: var(--primary-light);
-  color: var(--primary-dark);
-  padding: 0.25rem 0.5rem;
+.pill:hover {
+  background-color: var(--primary-color);
+  color: white;
 }
+
+.pill:active {
+  background-color: var(--primary-color);
+}
+
+/* ==========================================================================
+   Expires Countdown
+   ========================================================================== */
+
+.expires-countdown {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8rem;
+}
+
+/* ==========================================================================
+   Savings Row
+   ========================================================================== */
+
+.savings-value {
+  color: var(--success-color);
+}
+
+.savings-main {
+  font-weight: 600;
+  margin-bottom: 0.15rem;
+}
+
+.savings-percent {
+  font-size: 0.8rem;
+  opacity: 0.85;
+}
+
+.savings-comparison {
+  font-size: 0.7rem;
+  color: var(--gray-500);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* ==========================================================================
+   Separator
+   ========================================================================== */
+
+.separator {
+  position: relative;
+  margin: 1rem 0;
+  text-align: center;
+  animation: separatorFadeIn 0.4s ease-out;
+}
+
+@keyframes separatorFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.separator-icon {
+  display: inline-block;
+}
+
+.separator.navigated .separator-icon {
+  animation: slideInFromLeft 0.4s ease-out;
+}
+
+.separator.reloaded .separator-icon {
+  animation: rotateIn 0.5s ease-out;
+}
+
+@keyframes slideInFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes rotateIn {
+  from {
+    opacity: 0;
+    transform: rotate(180deg);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(0deg);
+  }
+}
+
+.separator hr {
+  border: 0;
+  height: 1px;
+  background-color: var(--gray-200);
+  margin: 0;
+}
+
+.separator-label {
+  position: absolute;
+  top: -0.6rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--gray-100);
+  padding: 0 0.6rem;
+  font-size: 0.7rem;
+  color: var(--gray-500);
+}
+
+/* ==========================================================================
+   Waiting State
+   ========================================================================== */
 
 .waiting {
   color: var(--gray-500);
@@ -162,198 +436,10 @@ body {
   100% { opacity: 0.5; }
 }
 
-.header-line {
-  margin-bottom: 0.5rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
+/* ==========================================================================
+   Banners & Notices
+   ========================================================================== */
 
-.status-code {
-  font-size: 0.75rem;
-  color: var(--gray-500);
-}
-
-.pill {
-  display: inline-block;
-  background-color: var(--primary-light);
-  color: var(--primary-dark);
-  font-weight: 500;
-  border-radius: 9999px;
-  padding: 0.25rem 0.75rem;
-  margin: 0.25rem 0.5rem 0.25rem 0;
-  font-size: 0.75rem;
-  line-height: 1;
-}
-
-.milli-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 1rem;
-}
-
-.milli-table td {
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--gray-200);
-}
-
-.milli-table td.label {
-  width: 110px;
-  font-weight: 500;
-  color: var(--gray-700);
-}
-
-.milli-table td.value {
-  width: calc(100% - 110px);
-  color: var(--gray-900);
-}
-
-.milli-table .status {
-  display: inline-flex;
-  align-items: center;
-  font-weight: 600;
-  gap: 0.375rem;
-}
-
-/* Status colors */
-.milli-table .status.hit {
-  color: var(--success-color);
-}
-
-.milli-table .status.miss {
-  color: var(--error-color);
-}
-
-.milli-table .status.bypass {
-  color: var(--warning-color);
-}
-
-.milli-table tr:last-child td {
-  border-bottom: none;
-}
-
-.separator {
-  position: relative;
-  margin: 1.5rem 0;
-  text-align: center;
-}
-
-.separator hr {
-  border: 0;
-  height: 1px;
-  background-color: var(--gray-200);
-  margin: 0;
-}
-
-.separator-label {
-  position: absolute;
-  top: -0.75rem;
-  left: 50%;
-  transform: translateX(-50%);
-  background-color: var(--gray-100);
-  padding: 0 0.75rem;
-  font-size: 0.75rem;
-  color: var(--gray-500);
-}
-
-/* Dark mode styles */
-@media (prefers-color-scheme: dark) {
-  body {
-    background-color: var(--gray-900);
-    color: var(--gray-100);
-  }
-
-  .entry-card {
-    background: var(--gray-800);
-    border-color: var(--gray-700);
-  }
-
-  /* Status colors remain the same in dark mode for consistency */
-
-  .entry-card h3 {
-    color: var(--gray-100);
-  }
-
-  .entry-card code {
-    background: var(--gray-700);
-    color: var(--gray-200);
-  }
-
-  .entry-card.highlight {
-    background: rgba(56, 88, 233, 0.15);
-  }
-
-  .waiting {
-    color: var(--gray-400);
-  }
-
-  .status-code {
-    color: var(--gray-400);
-  }
-
-  .pill {
-    background-color: var(--primary-dark);
-    color: var(--gray-100);
-  }
-
-  .status-transition-badge {
-    background-color: var(--primary-dark);
-    color: var(--gray-100);
-  }
-
-  .milli-table td {
-    border-bottom-color: var(--gray-700);
-  }
-
-  .milli-table td.label {
-    color: var(--gray-300);
-  }
-
-  .milli-table td.value {
-    color: var(--gray-100);
-  }
-
-  .separator hr {
-    background-color: var(--gray-700);
-  }
-
-  .separator-label {
-    background-color: var(--gray-900);
-    color: var(--gray-400);
-  }
-
-  .savings-row .savings-main {
-    color: var(--gray-100);
-  }
-
-  .savings-row .savings-comparison {
-    color: var(--gray-400);
-  }
-}
-
-/* Savings row styling */
-.savings-value {
-  color: var(--success-color);
-}
-
-.savings-main {
-  font-size: 0.9rem;
-  font-weight: 600;
-  margin-bottom: 0.25rem;
-}
-
-.savings-percent {
-  font-size: 0.85rem;
-  opacity: 0.85;
-}
-
-.savings-comparison {
-  font-size: 0.75rem;
-  color: var(--gray-600);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-}
-
-/* Deactivated banner */
 .deactivated-banner {
   background: var(--gray-200);
   border-bottom: 1px solid var(--gray-300);
@@ -394,7 +480,6 @@ body {
   background: var(--primary-dark);
 }
 
-/* Debug notice */
 .debug-notice {
   background: var(--warning-light);
   border-bottom: 1px solid var(--warning-color);
@@ -433,8 +518,105 @@ body {
   color: var(--gray-700);
 }
 
-/* Dark mode for new elements */
+/* ==========================================================================
+   Dark Mode
+   ========================================================================== */
+
 @media (prefers-color-scheme: dark) {
+  body {
+    background-color: var(--gray-900);
+    color: var(--gray-100);
+  }
+
+  .entry-card {
+    background: var(--gray-800);
+    border-color: var(--gray-700) !important;
+  }
+
+  .entry-card:hover {
+    border-color: var(--gray-700) !important;
+  }
+
+  .entry-card.compact .info-row:not(:last-child),
+  .entry-card.compact:hover .info-row:not(:last-child) {
+    border-color: var(--gray-700) !important;
+  }
+
+  .entry-card.highlight {
+    background: rgba(56, 88, 233, 0.1);
+  }
+
+  /* Status border colors in dark mode - when highlighted or hovered */
+  .entry-card[data-status="hit"].highlight,
+  .entry-card[data-status="hit"]:hover {
+    border-left-color: var(--success-color);
+  }
+  .entry-card[data-status="miss"].highlight,
+  .entry-card[data-status="miss"]:hover {
+    border-left-color: var(--error-color);
+  }
+  .entry-card[data-status="bypass"].highlight,
+  .entry-card[data-status="bypass"]:hover {
+    border-left-color: var(--info-color);
+  }
+  .entry-card[data-status="stale"].highlight,
+  .entry-card[data-status="stale"]:hover {
+    border-left-color: var(--warning-color);
+  }
+
+  .card-url {
+    color: var(--gray-100);
+  }
+
+  .http-status {
+    background-color: var(--gray-700);
+    color: var(--gray-300);
+  }
+
+  .info-row {
+    border-bottom-color: var(--gray-700);
+  }
+
+  .info-label {
+    color: var(--gray-400);
+  }
+
+  .info-value {
+    color: var(--gray-100);
+  }
+
+  .pill {
+    background-color: var(--primary-dark);
+    color: var(--gray-100);
+  }
+
+  .pill:hover {
+    background-color: var(--primary-color);
+  }
+
+  .transition-badge {
+    background-color: var(--primary-dark);
+    color: var(--gray-100);
+  }
+
+  .expired-badge {
+    background-color: rgba(239, 68, 68, 0.2);
+    color: var(--error-color);
+  }
+
+  .separator hr {
+    background-color: var(--gray-700);
+  }
+
+  .separator-label {
+    background-color: var(--gray-900);
+    color: var(--gray-400);
+  }
+
+  .waiting {
+    color: var(--gray-400);
+  }
+
   .deactivated-banner {
     background: var(--gray-800);
     border-bottom-color: var(--gray-700);
@@ -459,5 +641,9 @@ body {
 
   .dismiss-btn:hover {
     color: var(--gray-200);
+  }
+
+  .savings-comparison {
+    color: var(--gray-400);
   }
 }

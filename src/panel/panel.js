@@ -6,23 +6,28 @@ document.addEventListener("DOMContentLoaded", () => {
   const dismissDebugNoticeBtn = document.getElementById("dismiss-debug-notice");
 
   let lastSeparator = null;
-  let isDeactivated = true; // Start deactivated, activate on first MilliCache header
-  let hasSeenMilliCacheOnSite = false; // Track if we've seen MilliCache headers on current site
+  let pendingSeparator = null;
+  let isDeactivated = true;
+  let hasSeenMilliCacheOnSite = false;
   let debugNoticeDismissed = false;
   let hasShownDebugNotice = false;
 
   // Retention settings
-  const ENTRY_LIFETIME_MS = 60000; // 60 seconds
+  const ENTRY_LIFETIME_MS = 60000;
   const MIN_ENTRIES_KEPT = 5;
 
   // Track last navigated URL for reload vs navigate detection
   let lastNavigatedUrl = null;
 
   // Track last status per URL for transition badges
-  const urlStatusCache = new Map(); // url -> last status
+  const urlStatusCache = new Map();
 
   // Track MISS TTFB for comparison with HITs
-  const missTtfbCache = new Map(); // key: cacheKey, value: { ttfb, url, timestamp }
+  const missTtfbCache = new Map();
+
+  // Track cards by URL for reuse when clicking to reload
+  const cardsByUrl = new Map();
+  let pendingReloadUrl = null;
 
   // Activate button click handler
   activateBtn.addEventListener("click", () => {
@@ -61,33 +66,48 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   browser.devtools.network.onNavigated.addListener((url) => {
-    // Reset state on navigation to new page
     hasShownDebugNotice = false;
     hasSeenMilliCacheOnSite = false;
 
-    // Determine if reload or navigation
     const isReload = (url === lastNavigatedUrl);
     insertNavigationSeparator(isReload);
     lastNavigatedUrl = url;
   });
 
   function insertNavigationSeparator(isReload) {
+    pendingSeparator = {
+      isReload: isReload,
+      time: new Date().toLocaleTimeString()
+    };
+  }
+
+  function insertPendingSeparatorAfter(card) {
+    if (!pendingSeparator) return;
+
     if (lastSeparator) lastSeparator.remove();
+
     const wrapper = document.createElement("div");
-    wrapper.className = "separator";
+    wrapper.className = pendingSeparator.isReload ? "separator reloaded" : "separator navigated";
     lastSeparator = wrapper;
 
     const hr = document.createElement("hr");
     const label = document.createElement("div");
     label.className = "separator-label";
 
-    const icon = isReload ? "↺" : "→";
-    const action = isReload ? "Reloaded" : "Navigated";
-    label.textContent = `${icon} ${action} at ${new Date().toLocaleTimeString()}`;
+    const iconSpan = document.createElement("span");
+    iconSpan.className = "separator-icon";
+    iconSpan.textContent = pendingSeparator.isReload ? "↺" : "→";
+
+    const action = pendingSeparator.isReload ? " Reloaded" : " Navigated";
+
+    label.appendChild(iconSpan);
+    label.appendChild(document.createTextNode(`${action} at ${pendingSeparator.time}`));
 
     wrapper.appendChild(hr);
     wrapper.appendChild(label);
-    log.prepend(wrapper);
+    card.after(wrapper);
+
+    pendingSeparator = null;
   }
 
   function checkRemoveSeparator() {
@@ -98,7 +118,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Get transition label for status changes
   function getTransitionLabel(prevStatus, newStatus) {
     const prev = prevStatus.toLowerCase();
     const next = newStatus.toLowerCase();
@@ -110,7 +129,6 @@ document.addEventListener("DOMContentLoaded", () => {
     return null;
   }
 
-  // Format time as milliseconds or seconds
   function formatTime(ms) {
     if (ms < 1000) {
       return `${Math.round(ms)} ms`;
@@ -119,232 +137,494 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function createMilliEntry(request, milliHeaders, status, ttfb, ttfbSavings) {
-    const card = document.createElement("div");
-    card.className = "entry-card highlight";
-    card.setAttribute('data-status', status.toLowerCase());
+  function parseExpiresValue(expires) {
+    const regex = /(?:(-)?(\d+)d\s*)?(?:(\d+)h\s*)?(?:(\d+)m\s*)?(?:(\d+)s)?/;
+    const match = expires.match(regex);
 
-    const requestUrl = request.request.url;
+    if (match) {
+      const isNegative = match[1] === "-";
+      const days = parseInt(match[2] || 0, 10);
+      const hours = parseInt(match[3] || 0, 10);
+      const minutes = parseInt(match[4] || 0, 10);
+      const seconds = parseInt(match[5] || 0, 10);
 
-    // Check for transition from previous status
-    const prevStatus = urlStatusCache.get(requestUrl);
-    let transitionLabel = null;
-    if (prevStatus) {
-      transitionLabel = getTransitionLabel(prevStatus, status);
+      const totalSeconds = (days * 86400) + (hours * 3600) + (minutes * 60) + seconds;
+      const signedSeconds = isNegative ? -totalSeconds : totalSeconds;
+
+      return Date.now() + (signedSeconds * 1000);
     }
-    urlStatusCache.set(requestUrl, status.toLowerCase());
 
-    // Create the header with URL
-    const url = document.createElement("h3");
-    url.className = "url";
-    url.textContent = "🔗 " + requestUrl;
-    card.appendChild(url);
+    const num = parseInt(expires, 10);
+    if (!isNaN(num)) {
+      return Date.now() + (num * 1000);
+    }
 
-    // Add HTTP status code
-    const httpStatus = request.response.status;
-    const statusElement = document.createElement("div");
-    statusElement.className = "http-status-code";
-    statusElement.setAttribute('data-code', httpStatus);
-    statusElement.textContent = httpStatus;
-    card.appendChild(statusElement);
+    return null;
+  }
 
-    // Extract data from headers
-    let flags = [];
-    let key = "";
-    let time = "";
-    let gzip = "";
-    let reason = "";
-    let expires = "";
+  function formatCountdown(remainingMs) {
+    const isNegative = remainingMs < 0;
+    const absMs = Math.abs(remainingMs);
 
-    milliHeaders.forEach(h => {
-      const name = h.name.toLowerCase().replace("x-millicache-", "");
-      const value = h.value;
-      switch (name) {
-        case "key": key = value; break;
-        case "time": time = value; break;
-        case "flags": flags = value.split(" ").filter(f => !f.startsWith("url:")); break;
-        case "gzip": gzip = value === "true" ? "✔ Enabled" : "✖ Disabled"; break;
-        case "reason": reason = value; break;
-        case "expires": expires = value; break;
+    const totalSeconds = Math.floor(absMs / 1000);
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    const pad = (n) => n.toString().padStart(2, '0');
+    const prefix = isNegative ? "-" : "";
+
+    return `${prefix}${days}d ${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s`;
+  }
+
+  // ============================================================================
+  // Block-based UI creation helpers
+  // ============================================================================
+
+  // Icon map for labels
+  const labelIcons = {
+    "TTFB": "⚡",
+    "Status": "💾",
+    "Reason": "💬",
+    "Expires": "⏳",
+    "Flags": "🏷",
+    "Time": "🕑",
+    "Key": "🔑",
+    "Gzip": "🗜️",
+    "Savings": "📉"
+  };
+
+  function createInfoRow(label, value, isEssential = false) {
+    const row = document.createElement("div");
+    row.className = isEssential ? "info-row essential" : "info-row";
+
+    const labelEl = document.createElement("span");
+    labelEl.className = "info-label";
+    const icon = labelIcons[label] || "";
+    labelEl.textContent = icon ? `${icon} ${label}` : label;
+
+    const valueEl = document.createElement("span");
+    valueEl.className = "info-value";
+    valueEl.textContent = value;
+
+    row.appendChild(labelEl);
+    row.appendChild(valueEl);
+
+    return row;
+  }
+
+  function createStatusRow(status, transitionLabel) {
+    const row = document.createElement("div");
+    row.className = "info-row essential";
+
+    const labelEl = document.createElement("span");
+    labelEl.className = "info-label";
+    labelEl.textContent = "💾 Status";
+
+    const valueEl = document.createElement("span");
+    valueEl.className = "info-value";
+
+    const badge = document.createElement("span");
+    badge.className = "status-badge " + status.toLowerCase();
+
+    const dot = document.createElement("span");
+    dot.className = "status-dot";
+    dot.textContent = "●";
+
+    badge.appendChild(dot);
+    badge.appendChild(document.createTextNode(" " + status.toUpperCase()));
+    valueEl.appendChild(badge);
+
+    if (transitionLabel) {
+      const transitionBadge = document.createElement("span");
+      transitionBadge.className = "transition-badge";
+      transitionBadge.textContent = transitionLabel;
+      valueEl.appendChild(transitionBadge);
+    }
+
+    row.appendChild(labelEl);
+    row.appendChild(valueEl);
+
+    return row;
+  }
+
+  function createExpiresRow(expires) {
+    const row = document.createElement("div");
+    row.className = "info-row essential";
+
+    const labelEl = document.createElement("span");
+    labelEl.className = "info-label";
+    labelEl.textContent = "⏳ Expires";
+
+    const valueEl = document.createElement("span");
+    valueEl.className = "info-value";
+
+    const countdownSpan = document.createElement("span");
+    countdownSpan.className = "expires-countdown";
+    valueEl.appendChild(countdownSpan);
+
+    const expiredBadge = document.createElement("span");
+    expiredBadge.className = "expired-badge";
+    expiredBadge.textContent = "expired";
+    expiredBadge.style.display = "none";
+    valueEl.appendChild(expiredBadge);
+
+    row.appendChild(labelEl);
+    row.appendChild(valueEl);
+
+    const targetTime = parseExpiresValue(expires);
+
+    if (targetTime === null) {
+      countdownSpan.textContent = expires;
+      return row;
+    }
+
+    const updateCountdown = () => {
+      const remaining = targetTime - Date.now();
+      countdownSpan.textContent = formatCountdown(remaining);
+
+      if (remaining <= 0) {
+        expiredBadge.style.display = "inline";
+      } else {
+        expiredBadge.style.display = "none";
       }
+    };
+
+    updateCountdown();
+
+    const scheduleNext = () => {
+      setTimeout(() => {
+        if (!countdownSpan.isConnected) return;
+        updateCountdown();
+        scheduleNext();
+      }, 1000);
+    };
+
+    scheduleNext();
+
+    return row;
+  }
+
+  function createFlagsRow(flags) {
+    const row = document.createElement("div");
+    row.className = "info-row essential";
+
+    const labelEl = document.createElement("span");
+    labelEl.className = "info-label";
+    labelEl.textContent = "🏷 Flags";
+
+    const valueEl = document.createElement("span");
+    valueEl.className = "info-value";
+
+    const pillsContainer = document.createElement("div");
+    pillsContainer.className = "pills";
+
+    flags.forEach(f => {
+      const pill = document.createElement("span");
+      pill.className = "pill";
+      pill.textContent = f;
+      pill.title = "Click to copy";
+      pill.addEventListener("click", (e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(f).then(() => {
+          const originalText = pill.textContent;
+          pill.textContent = "Copied!";
+          setTimeout(() => {
+            pill.textContent = originalText;
+          }, 1000);
+        });
+      });
+      pillsContainer.appendChild(pill);
     });
 
-    // Create table
-    const table = document.createElement("table");
-    table.className = "milli-table";
+    valueEl.appendChild(pillsContainer);
+    row.appendChild(labelEl);
+    row.appendChild(valueEl);
 
-    // Table body
-    const tbody = document.createElement("tbody");
-
-    // 1. TTFB (first - most immediate performance indicator)
-    if (ttfb !== null && ttfb !== undefined) addTableRow(tbody, "⚡ TTFB", formatTime(ttfb));
-
-    // 2. Status
-    if (status) {
-      const row = document.createElement("tr");
-      const labelCell = document.createElement("td");
-      labelCell.className = "label";
-      labelCell.textContent = "💾 Status";
-
-      const valueCell = document.createElement("td");
-      valueCell.className = "value";
-
-      const badge = document.createElement("span");
-      badge.className = "status " + status.toLowerCase();
-
-      const dot = document.createElement("span");
-      dot.textContent = "● ";
-
-      const statusLower = status.toLowerCase();
-      if (statusLower === "hit") {
-        dot.style.color = "green";
-      } else if (statusLower === "miss") {
-        dot.style.color = "red";
-      } else if (statusLower === "stale") {
-        dot.style.color = "orange";
-      } else {
-        dot.style.color = "gray";
-      }
-
-      badge.appendChild(dot);
-      badge.appendChild(document.createTextNode(status.toUpperCase()));
-
-      valueCell.appendChild(badge);
-
-      // Add transition badge after status if there was a change
-      if (transitionLabel) {
-        const transitionBadge = document.createElement("span");
-        transitionBadge.className = "status-transition-badge";
-        transitionBadge.textContent = transitionLabel;
-        valueCell.appendChild(transitionBadge);
-      }
-
-      row.appendChild(labelCell);
-      row.appendChild(valueCell);
-      tbody.appendChild(row);
-    }
-
-    // 2. Reason
-    if (reason) addTableRow(tbody, "💬 Reason", reason);
-
-    // 3. Expires
-    if (expires) addTableRow(tbody, "⏳ Expires", expires);
-
-    // 4. Flags
-    if (flags.length) {
-      const row = document.createElement("tr");
-      const labelCell = document.createElement("td");
-      labelCell.className = "label";
-      labelCell.textContent = "🏷 Flags";
-
-      const valueCell = document.createElement("td");
-      valueCell.className = "value";
-
-      flags.forEach(f => {
-        const pill = document.createElement("span");
-        pill.className = "pill";
-        pill.textContent = f;
-        valueCell.appendChild(pill);
-      });
-
-      row.appendChild(labelCell);
-      row.appendChild(valueCell);
-      tbody.appendChild(row);
-    }
-
-    // Additional info (less important)
-    if (time) addTableRow(tbody, "🕑 Time", time);
-    if (key) addTableRow(tbody, "🧠 Key", key);
-    if (gzip) addTableRow(tbody, "🗜️ Gzip", gzip);
-
-    // Savings (last)
-    if (ttfbSavings) {
-      addTtfbSavingsRow(tbody, ttfbSavings);
-    }
-
-    // Add table body to table
-    table.appendChild(tbody);
-
-    // Add table to card
-    card.appendChild(table);
-
-    // Add card to log (newest at top - prepend puts it above everything including separator)
-    log.prepend(card);
-
-    // Highlight effect
-    setTimeout(() => {
-      card.classList.remove("highlight");
-    }, 10000);
-
-    // Auto-remove after 60 seconds (but keep minimum entries)
-    setTimeout(() => {
-      const entries = log.querySelectorAll(".entry-card");
-      if (entries.length > MIN_ENTRIES_KEPT) {
-        card.remove();
-        checkRemoveSeparator();
-      }
-    }, ENTRY_LIFETIME_MS);
+    return row;
   }
 
-// Helper function to add a row to the table
-  function addTableRow(tbody, label, value) {
-    const row = document.createElement("tr");
+  function createSavingsRow(savingsData) {
+    const row = document.createElement("div");
+    row.className = "info-row";
 
-    const labelCell = document.createElement("td");
-    labelCell.className = "label";
-    labelCell.textContent = label;
+    const labelEl = document.createElement("span");
+    labelEl.className = "info-label";
+    labelEl.textContent = "📉 Savings";
 
-    const valueCell = document.createElement("td");
-    valueCell.className = "value";
-    const strong = document.createElement("strong");
-    strong.textContent = value;
-    valueCell.appendChild(strong);
+    const valueEl = document.createElement("span");
+    valueEl.className = "info-value savings-value";
 
-    row.appendChild(labelCell);
-    row.appendChild(valueCell);
-    tbody.appendChild(row);
-  }
-
-  // Helper function to add TTFB savings row
-  function addTtfbSavingsRow(tbody, savingsData) {
-    const row = document.createElement("tr");
-    row.className = "savings-row";
-
-    const labelCell = document.createElement("td");
-    labelCell.className = "label";
-    labelCell.textContent = "📉 Savings";
-
-    const valueCell = document.createElement("td");
-    valueCell.className = "value savings-value";
-
-    // Main savings display
     const mainLine = document.createElement("div");
     mainLine.className = "savings-main";
 
     const arrow = savingsData.timeSaved >= 0 ? "↓" : "↑";
     const absTimeSaved = Math.abs(savingsData.timeSaved);
-
-    const mainText = document.createElement("strong");
-    mainText.textContent = `${arrow} ${Math.round(absTimeSaved)}ms faster`;
-    mainLine.appendChild(mainText);
+    mainLine.textContent = `${arrow} ${Math.round(absTimeSaved)}ms faster`;
 
     const percentSpan = document.createElement("span");
     percentSpan.className = "savings-percent";
-    percentSpan.textContent = ` (${savingsData.percentSaved}% improvement)`;
+    percentSpan.textContent = ` (${savingsData.percentSaved}%)`;
     mainLine.appendChild(percentSpan);
 
-    // Comparison line
     const compLine = document.createElement("div");
     compLine.className = "savings-comparison";
     compLine.textContent = `MISS: ${Math.round(savingsData.missTtfb)}ms → HIT: ${Math.round(savingsData.hitTtfb)}ms`;
 
-    valueCell.appendChild(mainLine);
-    valueCell.appendChild(compLine);
+    valueEl.appendChild(mainLine);
+    valueEl.appendChild(compLine);
+    row.appendChild(labelEl);
+    row.appendChild(valueEl);
 
-    row.appendChild(labelCell);
-    row.appendChild(valueCell);
-    tbody.appendChild(row);
+    return row;
   }
+
+  function buildCardContent(data) {
+    const content = document.createElement("div");
+    content.className = "card-content";
+
+    // TTFB
+    if (data.ttfb !== null && data.ttfb !== undefined) {
+      content.appendChild(createInfoRow("TTFB", formatTime(data.ttfb), false));
+    }
+
+    // Status (essential)
+    if (data.status) {
+      content.appendChild(createStatusRow(data.status, data.transitionLabel));
+    }
+
+    // Reason
+    if (data.reason) {
+      content.appendChild(createInfoRow("Reason", data.reason));
+    }
+
+    // Expires (essential)
+    if (data.expires) {
+      content.appendChild(createExpiresRow(data.expires));
+    }
+
+    // Flags (essential)
+    if (data.flags && data.flags.length) {
+      content.appendChild(createFlagsRow(data.flags));
+    }
+
+    // Time
+    if (data.time) {
+      content.appendChild(createInfoRow("Time", data.time));
+    }
+
+    // Key
+    if (data.key) {
+      content.appendChild(createInfoRow("Key", data.key));
+    }
+
+    // Gzip
+    if (data.gzip) {
+      content.appendChild(createInfoRow("Gzip", data.gzip));
+    }
+
+    // Savings
+    if (data.ttfbSavings) {
+      content.appendChild(createSavingsRow(data.ttfbSavings));
+    }
+
+    return content;
+  }
+
+  function extractHeaderData(milliHeaders) {
+    const data = {
+      flags: [],
+      key: "",
+      time: "",
+      gzip: "",
+      reason: "",
+      expires: ""
+    };
+
+    milliHeaders.forEach(h => {
+      const name = h.name.toLowerCase().replace("x-millicache-", "");
+      const value = h.value;
+      switch (name) {
+        case "key": data.key = value; break;
+        case "time": data.time = value; break;
+        case "flags": data.flags = value.split(" ").filter(f => !f.startsWith("url:")); break;
+        case "gzip": data.gzip = value === "true" ? "Enabled" : "Disabled"; break;
+        case "reason": data.reason = value; break;
+        case "expires": data.expires = value; break;
+      }
+    });
+
+    return data;
+  }
+
+  // ============================================================================
+  // Card creation and update
+  // ============================================================================
+
+  function updateExistingCard(card, request, milliHeaders, status, ttfb, ttfbSavings) {
+    const requestUrl = request.request.url;
+
+    // Keep compact for now, will expand after moving
+    card.classList.add("compact");
+    card.classList.remove("highlight");
+    card.setAttribute("data-status", status.toLowerCase());
+
+    // Update HTTP status
+    const httpStatusEl = card.querySelector(".http-status");
+    if (httpStatusEl) {
+      const httpStatus = request.response.status;
+      httpStatusEl.setAttribute("data-code", httpStatus);
+      httpStatusEl.textContent = httpStatus;
+    }
+
+    // Get transition label
+    const prevStatus = urlStatusCache.get(requestUrl);
+    const transitionLabel = prevStatus ? getTransitionLabel(prevStatus, status) : null;
+    urlStatusCache.set(requestUrl, status.toLowerCase());
+
+    // Extract header data
+    const headerData = extractHeaderData(milliHeaders);
+
+    // Replace card content
+    const oldContent = card.querySelector(".card-content");
+    if (oldContent) oldContent.remove();
+
+    const newContent = buildCardContent({
+      ...headerData,
+      status,
+      ttfb,
+      ttfbSavings,
+      transitionLabel
+    });
+    card.appendChild(newContent);
+
+    // Compact all other cards instantly (no transition)
+    const existingCards = log.querySelectorAll(".entry-card");
+    existingCards.forEach(existingCard => {
+      if (existingCard !== card) {
+        existingCard.style.transition = "none";
+        existingCard.classList.remove("highlight");
+        existingCard.classList.add("compact");
+        existingCard.offsetHeight; // Force reflow
+        existingCard.style.transition = "";
+      }
+    });
+
+    // Move to top with animation
+    card.style.animation = "none";
+    card.offsetHeight;
+    card.style.animation = "";
+
+    log.prepend(card);
+    insertPendingSeparatorAfter(card);
+
+    // Then expand the card (grows into view)
+    requestAnimationFrame(() => {
+      card.classList.remove("compact");
+      card.classList.add("highlight");
+    });
+  }
+
+  function createMilliEntry(request, milliHeaders, status, ttfb, ttfbSavings) {
+    const requestUrl = request.request.url;
+
+    // Check if this is a reload triggered by clicking a card
+    const existingCard = cardsByUrl.get(requestUrl);
+    const isClickReload = pendingReloadUrl === requestUrl && existingCard && existingCard.isConnected;
+
+    if (isClickReload) {
+      pendingReloadUrl = null;
+      updateExistingCard(existingCard, request, milliHeaders, status, ttfb, ttfbSavings);
+      return;
+    }
+
+    // Get transition label
+    const prevStatus = urlStatusCache.get(requestUrl);
+    const transitionLabel = prevStatus ? getTransitionLabel(prevStatus, status) : null;
+    urlStatusCache.set(requestUrl, status.toLowerCase());
+
+    // Create card (starts compact, will be expanded after prepending)
+    const card = document.createElement("div");
+    card.className = "entry-card compact";
+    card.setAttribute("data-status", status.toLowerCase());
+
+    // Card header
+    const header = document.createElement("div");
+    header.className = "card-header";
+
+    const urlEl = document.createElement("h3");
+    urlEl.className = "card-url";
+    urlEl.textContent = requestUrl;
+
+    const httpStatusEl = document.createElement("span");
+    httpStatusEl.className = "http-status";
+    httpStatusEl.setAttribute("data-code", request.response.status);
+    httpStatusEl.textContent = request.response.status;
+
+    header.appendChild(urlEl);
+    header.appendChild(httpStatusEl);
+    card.appendChild(header);
+
+    // Extract header data
+    const headerData = extractHeaderData(milliHeaders);
+
+    // Build card content
+    const content = buildCardContent({
+      ...headerData,
+      status,
+      ttfb,
+      ttfbSavings,
+      transitionLabel
+    });
+    card.appendChild(content);
+
+    // Click handler
+    card.addEventListener("click", () => {
+      pendingReloadUrl = requestUrl;
+      browser.devtools.inspectedWindow.eval(`window.location.href = ${JSON.stringify(requestUrl)}`);
+    });
+
+    // Track card
+    cardsByUrl.set(requestUrl, card);
+
+    // Compact all existing cards instantly (no transition)
+    const existingCards = log.querySelectorAll(".entry-card");
+    existingCards.forEach(existingCard => {
+      existingCard.style.transition = "none";
+      existingCard.classList.remove("highlight");
+      existingCard.classList.add("compact");
+      existingCard.offsetHeight; // Force reflow
+      existingCard.style.transition = "";
+    });
+
+    // Add to log (compact)
+    log.prepend(card);
+    insertPendingSeparatorAfter(card);
+
+    // Then expand the new card (grows into view)
+    requestAnimationFrame(() => {
+      card.classList.remove("compact");
+      card.classList.add("highlight");
+    });
+
+    // Auto-remove after lifetime
+    setTimeout(() => {
+      const entries = log.querySelectorAll(".entry-card");
+      if (entries.length > MIN_ENTRIES_KEPT) {
+        card.classList.add("removing");
+        card.addEventListener("animationend", () => {
+          card.remove();
+          cardsByUrl.delete(requestUrl);
+          checkRemoveSeparator();
+        }, { once: true });
+      }
+    }, ENTRY_LIFETIME_MS);
+  }
+
+  // ============================================================================
+  // Network request listener
+  // ============================================================================
 
   browser.devtools.network.onRequestFinished.addListener((request) => {
     const url = new URL(request.request.url);
@@ -356,24 +636,18 @@ document.addEventListener("DOMContentLoaded", () => {
     const statusHeader = headers.find(h => h.name.toLowerCase() === "x-millicache-status");
     const mime = request.response?.content?.mimeType || '';
 
-    // Check if this is a main document request (HTML page, not XHR/fetch)
-    // Use strict MIME check and request type
     const isMainDocument = mime === "text/html" && request.request.method === "GET" &&
       !request.request.url.includes("/wp-json/") && !request.request.url.includes("/api/");
 
-    // No MilliCache header found
     if (!statusHeader) {
-      // If this is a main document without MilliCache and we haven't seen any yet, deactivate
       if (isMainDocument && !hasSeenMilliCacheOnSite && !isDeactivated) {
         showDeactivatedState();
       }
       return;
     }
 
-    // MilliCache header detected
     hasSeenMilliCacheOnSite = true;
 
-    // Auto-activate if deactivated
     if (isDeactivated) {
       showActivatedState();
     }
@@ -387,8 +661,6 @@ document.addEventListener("DOMContentLoaded", () => {
       h.name.toLowerCase().startsWith("x-millicache-")
     );
 
-    // Check if only status header is present (debug mode not active)
-    // Debug headers include: key, time, flags, gzip, reason, expires
     const hasDebugHeaders = milliHeaders.some(h => {
       const name = h.name.toLowerCase();
       return name !== "x-millicache-status" &&
@@ -400,34 +672,24 @@ document.addEventListener("DOMContentLoaded", () => {
               name === "x-millicache-expires");
     });
 
-    // Show debug notice only if:
-    // - Only status header is present (no debug headers)
-    // - AND it's not a MISS (MISS only outputs status header by design)
     if (milliHeaders.length === 1 && statusHeader && !hasDebugHeaders && statusVal !== "miss") {
       showDebugNotice();
     } else if (hasDebugHeaders) {
-      // Debug headers present - hide notice if shown
       hideDebugNotice();
     }
 
-    // Extract TTFB from HAR timings
     const ttfb = request.timings?.wait;
-
-    // Use URL as cache key for consistent MISS/HIT matching
     const cacheKey = request.request.url;
 
-    // Calculate TTFB savings
     let ttfbSavings = null;
 
     if (statusVal === "miss" && ttfb !== null && ttfb !== undefined) {
-      // Store MISS TTFB for future comparison
       missTtfbCache.set(cacheKey, {
         ttfb: ttfb,
         url: request.request.url,
         timestamp: Date.now()
       });
     } else if ((statusVal === "hit" || statusVal === "stale") && ttfb !== null && ttfb !== undefined && missTtfbCache.has(cacheKey)) {
-      // Calculate savings compared to MISS
       const missData = missTtfbCache.get(cacheKey);
       const timeSaved = missData.ttfb - ttfb;
       const percentSaved = missData.ttfb > 0 ? Math.round((timeSaved / missData.ttfb) * 100) : 0;
