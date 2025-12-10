@@ -27,7 +27,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Track cards by URL for reuse when clicking to reload
   const cardsByUrl = new Map();
-  let pendingReloadUrl = null;
+  const pendingReloads = new Set();
 
   // Activate button click handler
   activateBtn.addEventListener("click", () => {
@@ -70,6 +70,12 @@ document.addEventListener("DOMContentLoaded", () => {
     hasSeenMilliCacheOnSite = false;
 
     const isReload = (url === lastNavigatedUrl);
+
+    // Clear pending reloads that don't match the new URL
+    if (!isReload) {
+      pendingReloads.clear();
+    }
+
     insertNavigationSeparator(isReload);
     lastNavigatedUrl = url;
   });
@@ -531,10 +537,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Check if this is a reload triggered by clicking a card
     const existingCard = cardsByUrl.get(requestUrl);
-    const isClickReload = pendingReloadUrl === requestUrl && existingCard && existingCard.isConnected;
+    const isClickReload = pendingReloads.has(requestUrl) && existingCard && existingCard.isConnected;
 
     if (isClickReload) {
-      pendingReloadUrl = null;
+      pendingReloads.delete(requestUrl);
       updateExistingCard(existingCard, request, milliHeaders, status, ttfb, ttfbSavings);
       return;
     }
@@ -581,7 +587,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Click handler
     card.addEventListener("click", () => {
-      pendingReloadUrl = requestUrl;
+      pendingReloads.add(requestUrl);
       browser.devtools.inspectedWindow.eval(`window.location.href = ${JSON.stringify(requestUrl)}`);
     });
 
