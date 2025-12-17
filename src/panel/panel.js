@@ -650,10 +650,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const headers = request.response.headers;
     const statusHeader = headers.find(h => h.name.toLowerCase() === "x-millicache-status");
-    const mime = request.response?.content?.mimeType || '';
 
-    const isMainDocument = mime.startsWith("text/html") && request.request.method === "GET" &&
-      !request.request.url.includes("/wp-json/") && !request.request.url.includes("/api/");
+    // Check if this is the main document by comparing with the last navigated URL
+    const isMainDocument = lastNavigatedUrl && request.request.url === lastNavigatedUrl;
 
     if (!statusHeader) {
       if (isMainDocument && !hasSeenMilliCacheOnSite && !isDeactivated) {
